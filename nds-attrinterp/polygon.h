@@ -3,8 +3,10 @@
 #include "3d_slope.h"
 #include "3dtst.h"
 
+#include <array>
+
 struct Polygon {
-    int32_t verts[4][2];
+    std::array<std::array<int32_t, 2>, 4> verts;
 
     bool windingCW;
 

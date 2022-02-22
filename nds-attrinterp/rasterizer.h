@@ -31,8 +31,8 @@ struct PolygonState {
                 AdvanceVertex();
             }
 
-            auto cv = polygon.verts[currVertex];
-            auto nv = polygon.verts[nextVertex];
+            const auto &cv = polygon.verts[currVertex];
+            const auto &nv = polygon.verts[nextVertex];
             slope.Setup(cv[0], cv[1], nv[0], nv[1], 4096, 4096);
         }
 
