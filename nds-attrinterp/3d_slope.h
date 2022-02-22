@@ -176,6 +176,7 @@ public:
             //    no   yes  yes  end
             //    yes  no   yes  end
             //    yes  yes  no   start
+            // int32_t x = (!m_negative && end) ? XStart(y + 1) : (m_negative && !end) ? XEnd(y) : XStart(y);
             int32_t x = (m_negative != end) ? XEnd(y) : XStart(y);
             // int32_t x = (m_negative != end) ? FracXEnd(y) : FracXStart(y);
             m_interp.ComputeFactors(x);
