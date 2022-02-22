@@ -5,7 +5,8 @@
 #include "polygon.h"
 #include "rasterizer.h"
 
-constexpr bool printColors = false;
+constexpr bool printColors = true;
+constexpr bool showMatches = true;
 
 union Color15 {
     uint16_t u16;
@@ -50,8 +51,7 @@ void test(const std::filesystem::path &path) {
     }
     fmt::print("Testing {}...\n", path.string());
 
-    Polygon polygon;
-    polygon.LoadFrom(data);
+    Polygon polygon{data};
     for (size_t i = 0; i < polygon.vertexCount; i++) {
         fmt::print("  [{}] {}x{}\n", i, polygon.verts[i][0], polygon.verts[i][1]);
     }
@@ -161,7 +161,7 @@ void test(const std::filesystem::path &path) {
             xre--;
         }
 
-        bool hadMismatch = false;
+        // bool hadMismatch = false;
 
         auto testSpan = [&](int32_t xs, int32_t xe) {
             for (int32_t x = xs; x <= xe; x++) {
@@ -185,8 +185,25 @@ void test(const std::filesystem::path &path) {
                 const Color15 frameClr = {.u16 = data.frame[y][x]};
                 const auto texCoord = ToTexCoord(frameClr);
                 if (frameClr.r == 3 && frameClr.g == 3 && frameClr.b == 3) {
-                    fmt::print("  /!\\ {:>3d}x{:<3d}: expected a background pixel\n", x, y);
-                    hadMismatch = true;
+                    fmt::print(
+                        "  /!\\ {:>3d}x{:<3d} | {:>4d}x{:<4d} ({:>4s}x{:>4s}) >> {:>3d}x{:<3d} != backgnd            ",
+                        x, y, fs, ft, fmt::format("{:X}.{:X}", s, fs & 0xF), fmt::format("{:X}.{:X}", t, ft & 0xF), s,
+                        t);
+                    fmt::print("   [{:2d},{:2d},{:2d}] ", clr.r, clr.g, clr.b);
+                    if constexpr (printColors) {
+                        ansicon::Attributes attrs;
+                        attrs.SetBGColor24(cvt5to8(clr.r), cvt5to8(clr.g), cvt5to8(clr.b));
+                        fmt::print("  ");
+                    }
+                    fmt::print(" != ");
+                    if constexpr (printColors) {
+                        ansicon::Attributes attrs;
+                        attrs.SetBGColor24(cvt5to8(3), cvt5to8(3), cvt5to8(3));
+                        fmt::print("  ");
+                    }
+                    fmt::print(" [ 3, 3, 3]");
+                    fmt::print("   {} / {}\n", xInterp.Num(), xInterp.Den());
+                    // hadMismatch = true;
                 } else if (texCoord.s != s || texCoord.t != t) {
                     fmt::print("  /!\\ {:>3d}x{:<3d} | {:>4d}x{:<4d} ({:>4s}x{:>4s}) >> {:>3d}x{:<3d} != {:>3d}x{:<3d} "
                                "{:<11s}",
@@ -207,8 +224,8 @@ void test(const std::filesystem::path &path) {
                     }
                     fmt::print(" [{:2d},{:2d},{:2d}]", frameClr.r, frameClr.g, frameClr.b);
                     fmt::print("   {} / {}\n", xInterp.Num(), xInterp.Den());
-                    hadMismatch = true;
-                } else {
+                    // hadMismatch = true;
+                } else if constexpr (showMatches) {
                     fmt::print("      {:>3d}x{:<3d} | {:>4d}x{:<4d} ({:>4s}x{:>4s}) >> {:>3d}x{:<3d} == {:>3d}x{:<3d}  "
                                "          ",
                                x, y, fs, ft, fmt::format("{:X}.{:X}", s, fs & 0xF),
@@ -253,31 +270,29 @@ void test(const std::filesystem::path &path) {
             testSpan(xStart, xEnd);
         }
 
-        if (hadMismatch) {
-            auto &cvl = data.verts[cvlIndex];
-            auto &nvl = data.verts[nvlIndex];
-            auto &ls = *leftSlope;
-            auto &li = ls.Interp();
+        // if (hadMismatch) {
+        auto &cvl = data.verts[cvlIndex];
+        auto &nvl = data.verts[nvlIndex];
+        auto &ls = *leftSlope;
+        auto &li = ls.Interp();
 
-            auto &cvr = data.verts[cvrIndex];
-            auto &nvr = data.verts[nvrIndex];
-            auto &rs = *rightSlope;
-            auto &ri = rs.Interp();
+        auto &cvr = data.verts[cvrIndex];
+        auto &nvr = data.verts[nvrIndex];
+        auto &rs = *rightSlope;
+        auto &ri = rs.Interp();
 
-            fmt::print("    Left:  edge={:>3d}x{:<3d}..{:>3d}x{:<3d}  texcoords={:>4d}x{:<4d}   slope={}{} "
-                       "{:>3d}..{:<3d} ({:>10d}..{:<10d}) DX={:<10d}   interp={:>3d}..{:<3d} ({})\n",
-                       cvl[0], cvl[1], nvl[0], nvl[1], sl, tl, (ls.IsXMajor() ? 'X' : 'Y'),
-                       (ls.IsNegative() ? 'N' : 'P'), ls.XStart(y), ls.XEnd(y), ls.FracXStart(y), ls.FracXEnd(y),
-                       ls.DX(), li.X0(), li.X1(), li.XMax());
+        fmt::print("    Left:  edge={:>3d}x{:<3d}..{:>3d}x{:<3d}  texcoords={:>4d}x{:<4d}   slope={}{} "
+                   "{:>3d}..{:<3d} ({:>10d}..{:<10d}) DX={:<10d}   interp={:>3d}..{:<3d} ({})\n",
+                   cvl[0], cvl[1], nvl[0], nvl[1], sl, tl, (ls.IsNegative() ? '-' : '+'), (ls.IsXMajor() ? 'X' : 'Y'),
+                   ls.XStart(y), ls.XEnd(y), ls.FracXStart(y), ls.FracXEnd(y), ls.DX(), li.X0(), li.X1(), li.XMax());
 
-            fmt::print("    Right: edge={:>3d}x{:<3d}..{:>3d}x{:<3d}  texcoords={:>4d}x{:<4d}   slope={}{} "
-                       "{:>3d}..{:<3d} ({:>10d}..{:<10d}) DX={:<10d}   interp={:>3d}..{:<3d} ({})\n",
-                       cvr[0], cvr[1], nvr[0], nvr[1], sr, tr, (rs.IsXMajor() ? 'X' : 'Y'),
-                       (rs.IsNegative() ? 'N' : 'P'), rs.XStart(y), rs.XEnd(y), rs.FracXStart(y), rs.FracXEnd(y),
-                       rs.DX(), ri.X0(), ri.X1(), ri.XMax());
+        fmt::print("    Right: edge={:>3d}x{:<3d}..{:>3d}x{:<3d}  texcoords={:>4d}x{:<4d}   slope={}{} "
+                   "{:>3d}..{:<3d} ({:>10d}..{:<10d}) DX={:<10d}   interp={:>3d}..{:<3d} ({})\n",
+                   cvr[0], cvr[1], nvr[0], nvr[1], sr, tr, (rs.IsNegative() ? '-' : '+'), (rs.IsXMajor() ? 'X' : 'Y'),
+                   rs.XStart(y), rs.XEnd(y), rs.FracXStart(y), rs.FracXEnd(y), rs.DX(), ri.X0(), ri.X1(), ri.XMax());
 
-            fmt::print("    X interpolator: {:>3d}..{:<3d} ({})\n", xInterp.X0(), xInterp.X1(), xInterp.XMax());
-        }
+        fmt::print("    X interpolator: {:>3d}..{:<3d} ({})\n", xInterp.X0(), xInterp.X1(), xInterp.XMax());
+        //}
     }
 }
 

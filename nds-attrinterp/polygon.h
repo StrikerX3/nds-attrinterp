@@ -17,7 +17,7 @@ struct Polygon {
 
     uint8_t alpha;
 
-    void LoadFrom(const TestData &data) {
+    Polygon(const TestData &data) {
         vertexCount = data.quad ? 4 : 3;
         alpha = data.wireframe ? 0 : data.alpha;
         topScreenY = btmScreenY = data.verts[0][1];
