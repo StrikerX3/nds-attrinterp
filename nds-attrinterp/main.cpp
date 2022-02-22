@@ -177,7 +177,17 @@ void test(const std::filesystem::path &path) {
                 const int16_t t = ft >> 4;
 
                 // Convert to color to aid comparisons
-                const Color15 clr = ToColor({s, t});
+                const Color15 stClr = ToColor({s, t});
+
+                // Apply alpha
+                const Color15 clr = [&]() -> Color15 {
+                    if (polygon.alpha == 0 || polygon.alpha == 31) {
+                        return stClr;
+                    }
+                    uint8_t alpha = data.alpha + 1;
+                    auto apply = [&](uint16_t c) -> uint16_t { return ((c * alpha) + (3 * (32 - alpha))) >> 5; };
+                    return {.r = apply(stClr.r), .g = apply(stClr.g), .b = apply(stClr.b), .a = 1};
+                }();
 
                 auto cvt5to8 = [](uint8_t x) { return (x << 3) | (x >> 2); };
 
