@@ -6,7 +6,7 @@
 #include "rasterizer.h"
 
 constexpr bool printColors = true;
-constexpr bool showMatches = true;
+constexpr bool showMatches = false;
 
 union Color15 {
     uint16_t u16;
@@ -141,8 +141,8 @@ void test(const std::filesystem::path &path) {
 
         // Setup X coordinate interpolator
         Interpolator xInterp;
-        // xInterp.Setup(xls, xre + ((!rightSlope->IsNegative() || !rightSlope->IsXMajor()) && rightSlope->DX() != 0),
-        //          1, 1);
+        /*xInterp.Setup(xls, xre + ((!rightSlope->IsNegative() || !rightSlope->IsXMajor()) && rightSlope->DX() != 0), 1,
+                      1);*/
         xInterp.Setup(xls, xre + (!rightSlope->IsXMajor() && rightSlope->DX() != 0), 1, 1);
 
         // Determine which portions of the polygon to render
@@ -166,7 +166,7 @@ void test(const std::filesystem::path &path) {
         // Trim right edge in some rare cases where it starts before the left edge
         xrs = std::max(xrs, xle + 1);
 
-        // bool hadMismatch = false;
+        bool hadMismatch = false;
 
         auto testSpan = [&](int32_t xs, int32_t xe) {
             for (int32_t x = xs; x <= xe; x++) {
@@ -218,7 +218,7 @@ void test(const std::filesystem::path &path) {
                     }
                     fmt::print(" [ 3, 3, 3]");
                     fmt::print("   {} / {}\n", xInterp.Num(), xInterp.Den());
-                    // hadMismatch = true;
+                    hadMismatch = true;
                 } else if (texCoord.s != s || texCoord.t != t) {
                     fmt::print("  /!\\ {:>3d}x{:<3d} | {:>4d}x{:<4d} ({:>4s}x{:>4s}) >> {:>3d}x{:<3d} != {:>3d}x{:<3d} "
                                "{:<11s}",
@@ -239,7 +239,7 @@ void test(const std::filesystem::path &path) {
                     }
                     fmt::print(" [{:2d},{:2d},{:2d}]", frameClr.r, frameClr.g, frameClr.b);
                     fmt::print("   {} / {}\n", xInterp.Num(), xInterp.Den());
-                    // hadMismatch = true;
+                    hadMismatch = true;
                 } else if constexpr (showMatches) {
                     fmt::print("      {:>3d}x{:<3d} | {:>4d}x{:<4d} ({:>4s}x{:>4s}) >> {:>3d}x{:<3d} == {:>3d}x{:<3d}  "
                                "          ",
@@ -285,31 +285,33 @@ void test(const std::filesystem::path &path) {
             testSpan(xStart, xEnd);
         }
 
-        // if (hadMismatch) {
-        auto &cvl = data.verts[cvlIndex];
-        auto &nvl = data.verts[nvlIndex];
-        auto &ls = *leftSlope;
-        auto &li = ls.Interp();
+        if (showMatches || hadMismatch) {
+            auto &cvl = data.verts[cvlIndex];
+            auto &nvl = data.verts[nvlIndex];
+            auto &ls = *leftSlope;
+            auto &li = ls.Interp();
 
-        auto &cvr = data.verts[cvrIndex];
-        auto &nvr = data.verts[nvrIndex];
-        auto &rs = *rightSlope;
-        auto &ri = rs.Interp();
+            auto &cvr = data.verts[cvrIndex];
+            auto &nvr = data.verts[nvrIndex];
+            auto &rs = *rightSlope;
+            auto &ri = rs.Interp();
 
-        fmt::print("    Left:  edge={:>3d}x{:<3d}..{:>3d}x{:<3d}  texcoords={:>4d}x{:<4d} = {:>3d}x{:<3d}   slope={}{} "
-                   "{:>3d}..{:<3d} ({:>6d}..{:<6d}) DX={:<10d}   interp={:>3d}..{:<3d} ({})\n",
-                   cvl[0], cvl[1], nvl[0], nvl[1], sl, tl, sl >> 4, tl >> 4, (ls.IsNegative() ? '-' : '+'),
-                   (ls.IsXMajor() ? 'X' : 'Y'), ls.XStart(y), ls.XEnd(y), ls.FracXStart(y) & Slope::kFracMask,
-                   ls.FracXEnd(y) & Slope::kFracMask, ls.DX(), li.X0(), li.X1(), li.XMax());
+            fmt::print(
+                "    Left:  edge={:>3d}x{:<3d}..{:>3d}x{:<3d}  texcoords={:>4d}x{:<4d} = {:>3d}x{:<3d}   slope={}{} "
+                "{:>3d}..{:<3d} ({:>6d}..{:<6d}) DX={:<10d}   interp={:>3d}..{:<3d} ({})\n",
+                cvl[0], cvl[1], nvl[0], nvl[1], sl, tl, sl >> 4, tl >> 4, (ls.IsNegative() ? '-' : '+'),
+                (ls.IsXMajor() ? 'X' : 'Y'), ls.XStart(y), ls.XEnd(y), ls.FracXStart(y) & Slope::kFracMask,
+                ls.FracXEnd(y) & Slope::kFracMask, ls.DX(), li.X0(), li.X1(), li.XMax());
 
-        fmt::print("    Right: edge={:>3d}x{:<3d}..{:>3d}x{:<3d}  texcoords={:>4d}x{:<4d} = {:>3d}x{:<3d}   slope={}{} "
-                   "{:>3d}..{:<3d} ({:>6d}..{:<6d}) DX={:<10d}   interp={:>3d}..{:<3d} ({})\n",
-                   cvr[0], cvr[1], nvr[0], nvr[1], sr, tr, sr >> 4, tr >> 4, (rs.IsNegative() ? '-' : '+'),
-                   (rs.IsXMajor() ? 'X' : 'Y'), rs.XStart(y), rs.XEnd(y), rs.FracXStart(y) & Slope::kFracMask,
-                   rs.FracXEnd(y) & Slope::kFracMask, rs.DX(), ri.X0(), ri.X1(), ri.XMax());
+            fmt::print(
+                "    Right: edge={:>3d}x{:<3d}..{:>3d}x{:<3d}  texcoords={:>4d}x{:<4d} = {:>3d}x{:<3d}   slope={}{} "
+                "{:>3d}..{:<3d} ({:>6d}..{:<6d}) DX={:<10d}   interp={:>3d}..{:<3d} ({})\n",
+                cvr[0], cvr[1], nvr[0], nvr[1], sr, tr, sr >> 4, tr >> 4, (rs.IsNegative() ? '-' : '+'),
+                (rs.IsXMajor() ? 'X' : 'Y'), rs.XStart(y), rs.XEnd(y), rs.FracXStart(y) & Slope::kFracMask,
+                rs.FracXEnd(y) & Slope::kFracMask, rs.DX(), ri.X0(), ri.X1(), ri.XMax());
 
-        fmt::print("    X interpolator: {:>3d}..{:<3d} ({})\n", xInterp.X0(), xInterp.X1(), xInterp.XMax());
-        //}
+            fmt::print("    X interpolator: {:>3d}..{:<3d} ({})\n", xInterp.X0(), xInterp.X1(), xInterp.XMax());
+        }
     }
 }
 
