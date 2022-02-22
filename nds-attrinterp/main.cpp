@@ -6,7 +6,7 @@
 #include "rasterizer.h"
 
 constexpr bool printColors = true;
-constexpr bool showMatches = false;
+constexpr bool showMatches = true;
 
 union Color15 {
     uint16_t u16;
@@ -298,19 +298,22 @@ void test(const std::filesystem::path &path) {
 
             fmt::print(
                 "    Left:  edge={:>3d}x{:<3d}..{:>3d}x{:<3d}  texcoords={:>4d}x{:<4d} = {:>3d}x{:<3d}   slope={}{} "
-                "{:>3d}..{:<3d} ({:>6d}..{:<6d}) DX={:<10d}   interp={:>3d}..{:<3d} ({})\n",
+                "{:>3d}..{:<3d} ({:>6d}..{:<6d}) DX={:<10d}   interp={:>3d}..{:<3d} ({})  {}\n",
                 cvl[0], cvl[1], nvl[0], nvl[1], sl, tl, sl >> 4, tl >> 4, (ls.IsNegative() ? '-' : '+'),
                 (ls.IsXMajor() ? 'X' : 'Y'), ls.XStart(y), ls.XEnd(y), ls.FracXStart(y) & Slope::kFracMask,
-                ls.FracXEnd(y) & Slope::kFracMask, ls.DX(), li.X0(), li.X1(), li.XMax());
+                ls.FracXEnd(y) & Slope::kFracMask, ls.DX(), li.X0(), li.X1(), li.XMax(),
+                (drawLeftEdge ? "drawn" : "hidden"));
 
             fmt::print(
                 "    Right: edge={:>3d}x{:<3d}..{:>3d}x{:<3d}  texcoords={:>4d}x{:<4d} = {:>3d}x{:<3d}   slope={}{} "
-                "{:>3d}..{:<3d} ({:>6d}..{:<6d}) DX={:<10d}   interp={:>3d}..{:<3d} ({})\n",
+                "{:>3d}..{:<3d} ({:>6d}..{:<6d}) DX={:<10d}   interp={:>3d}..{:<3d} ({})  {}\n",
                 cvr[0], cvr[1], nvr[0], nvr[1], sr, tr, sr >> 4, tr >> 4, (rs.IsNegative() ? '-' : '+'),
                 (rs.IsXMajor() ? 'X' : 'Y'), rs.XStart(y), rs.XEnd(y), rs.FracXStart(y) & Slope::kFracMask,
-                rs.FracXEnd(y) & Slope::kFracMask, rs.DX(), ri.X0(), ri.X1(), ri.XMax());
+                rs.FracXEnd(y) & Slope::kFracMask, rs.DX(), ri.X0(), ri.X1(), ri.XMax(),
+                (drawRightEdge ? "drawn" : "hidden"));
 
-            fmt::print("    X interpolator: {:>3d}..{:<3d} ({})\n", xInterp.X0(), xInterp.X1(), xInterp.XMax());
+            fmt::print("    X interpolator: {:>3d}..{:<3d} ({})   interior {}\n", xInterp.X0(), xInterp.X1(),
+                       xInterp.XMax(), (drawInterior ? "drawn" : "hidden"));
         }
     }
 }
