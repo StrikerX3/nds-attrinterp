@@ -10,8 +10,8 @@
 #include <vector>
 
 constexpr bool printColors = true;
-constexpr bool showMatches = true;
-constexpr bool computeSlopes = false;
+constexpr bool showMatches = false;
+constexpr bool computeSlopes = true;
 
 constexpr int16_t kW0 = 4096;
 constexpr int16_t kW1 = 4096;
@@ -384,17 +384,29 @@ void test(const std::filesystem::path &path) {
             //     - if undershooting and gradient decreases (more -) towards right edge, increment left edge
 
             // Get attribute range limits
-            const int32_t slLo = kTexCoords[cvlIndex][0];
-            const int32_t slHi = kTexCoords[nvlIndex][0];
+            int32_t slLo = kTexCoords[cvlIndex][0];
+            int32_t slHi = kTexCoords[nvlIndex][0];
+            if (slLo > slHi) {
+                std::swap(slLo, slHi);
+            }
 
-            const int32_t srLo = kTexCoords[cvrIndex][0];
-            const int32_t srHi = kTexCoords[nvrIndex][0];
+            int32_t srLo = kTexCoords[cvrIndex][0];
+            int32_t srHi = kTexCoords[nvrIndex][0];
+            if (srLo > srHi) {
+                std::swap(srLo, srHi);
+            }
 
-            const int32_t tlLo = kTexCoords[cvlIndex][1];
-            const int32_t tlHi = kTexCoords[nvlIndex][1];
+            int32_t tlLo = kTexCoords[cvlIndex][1];
+            int32_t tlHi = kTexCoords[nvlIndex][1];
+            if (tlLo > tlHi) {
+                std::swap(tlLo, tlHi);
+            }
 
-            const int32_t trLo = kTexCoords[cvrIndex][1];
-            const int32_t trHi = kTexCoords[nvrIndex][1];
+            int32_t trLo = kTexCoords[cvrIndex][1];
+            int32_t trHi = kTexCoords[nvrIndex][1];
+            if (trLo > trHi) {
+                std::swap(trLo, trHi);
+            }
 
             const int32_t start = xls;
             const int32_t end = xre + (rightSlope->DX() != 0);
@@ -467,6 +479,7 @@ void test(const std::filesystem::path &path) {
             int32_t trMax = -1;
 
             bool foundMin = false;
+            bool foundMax = false;
             for (int32_t slTest = slLo; slTest <= slHi; slTest++) {
                 for (int32_t srTest = srLo; srTest <= srHi; srTest++) {
                     if (testAttr(slTest, srTest, true)) {
@@ -480,12 +493,17 @@ void test(const std::filesystem::path &path) {
                             foundMin = true;
                         }
                     } else if (foundMin) {
+                        foundMax = true;
                         break;
                     }
+                }
+                if (foundMax) {
+                    break;
                 }
             }
 
             foundMin = false;
+            foundMax = false;
             for (int32_t tlTest = tlLo; tlTest <= tlHi; tlTest++) {
                 for (int32_t trTest = trLo; trTest <= trHi; trTest++) {
                     if (testAttr(tlTest, trTest, false)) {
@@ -499,8 +517,12 @@ void test(const std::filesystem::path &path) {
                             foundMin = true;
                         }
                     } else if (foundMin) {
+                        foundMax = true;
                         break;
                     }
+                }
+                if (foundMax) {
+                    break;
                 }
             }
 
