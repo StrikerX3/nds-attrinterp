@@ -49,6 +49,8 @@ struct TestData {
         }
 
         valid = true;
+        frameLoaded = false;
+        this->path = path;
         this->magic = magic;
         this->version = version;
         antiAlias = (params >> 0) & 1;
@@ -65,13 +67,21 @@ struct TestData {
             }
         }
 
-        file.seekg(0x40, std::ios::beg);
-        file.read(reinterpret_cast<char *>(frame), sizeof(frame));
-
         return true;
     }
 
+    void LoadFrame() {
+        if (!frameLoaded) {
+            std::basic_ifstream<char> file{path, std::ios::binary};
+            file.seekg(0x40, std::ios::beg);
+            file.read(reinterpret_cast<char *>(frame), sizeof(frame));
+            frameLoaded = true;
+        }
+    }
+
     bool valid = false;
+    bool frameLoaded = false;
+    std::filesystem::path path;
 
     uint32_t magic;
     uint16_t version;

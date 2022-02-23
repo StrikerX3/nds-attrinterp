@@ -120,10 +120,7 @@ private:
 
     int32_t LerpPerspective(int32_t a0, int32_t a1) const {
         if (a0 > a1) {
-            // Adjust to fractional ceiling
-            int64_t num = (int64_t)(a1 - a0) * m_perspNum;
-            int32_t nudge = (num % m_perspDen != 0) ? 1 : 0;
-            return a0 + num / m_perspDen - nudge;
+            return a1 + (((int64_t)(a0 - a1) * (m_perspDen - m_perspNum)) / m_perspDen);
         } else {
             return a0 + (int64_t)(a1 - a0) * m_perspNum / m_perspDen;
         }

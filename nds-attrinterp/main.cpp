@@ -49,6 +49,7 @@ void test(const std::filesystem::path &path) {
     if (!data.Read(path)) {
         return;
     }
+    data.LoadFrame();
     fmt::print("Testing {}...\n", path.string());
 
     Polygon polygon{data};
@@ -57,6 +58,9 @@ void test(const std::filesystem::path &path) {
     }
     fmt::print("  {}\n", polygon.windingCW ? "clockwise" : "counter-clockwise");
     fmt::print("  Alpha {}\n", polygon.alpha);
+
+    size_t matchCount = 0;
+    size_t totalCount = 0;
 
     PolygonState state;
     state.SetupPolygon(polygon);
@@ -141,9 +145,12 @@ void test(const std::filesystem::path &path) {
 
         // Setup X coordinate interpolator
         Interpolator xInterp;
-        /*xInterp.Setup(xls, xre + ((!rightSlope->IsNegative() || !rightSlope->IsXMajor()) && rightSlope->DX() != 0), 1,
-                      1);*/
-        xInterp.Setup(xls, xre + (!rightSlope->IsXMajor() && rightSlope->DX() != 0), 1, 1);
+        const bool rightNeg = rightSlope->IsNegative();
+        const bool rightXMaj = rightSlope->IsXMajor();
+        const int32_t rightDX = rightSlope->DX();
+        // xInterp.Setup(xls, xre + ((!rightNeg || !rightXMaj) && rightDX != 0), 1, 1);
+        // xInterp.Setup(xls, xre + (!rightXMaj && rightDX != 0), 1, 1);
+        xInterp.Setup(xls, xre + (rightDX != 0), 1, 1);
 
         // Determine which portions of the polygon to render
         bool drawLeftEdge;
@@ -167,6 +174,8 @@ void test(const std::filesystem::path &path) {
         xrs = std::max(xrs, xle + 1);
 
         bool hadMismatch = false;
+
+        auto cvt5to8 = [](uint8_t x) { return (x << 3) | (x >> 2); };
 
         auto testSpan = [&](int32_t xs, int32_t xe) {
             for (int32_t x = xs; x <= xe; x++) {
@@ -194,12 +203,13 @@ void test(const std::filesystem::path &path) {
                     return {.r = apply(stClr.r), .g = apply(stClr.g), .b = apply(stClr.b), .a = 1};
                 }();
 
-                auto cvt5to8 = [](uint8_t x) { return (x << 3) | (x >> 2); };
-
                 // Compare against captured data
+                totalCount++;
                 const Color15 frameClr = {.u16 = data.frame[y][x]};
                 const auto texCoord = ToTexCoord(frameClr);
                 if (frameClr.r == 3 && frameClr.g == 3 && frameClr.b == 3) {
+                    // Pixel present where there should be background.
+                    // Very few cases occur, and they are never an attribute interpolation error.
                     fmt::print(
                         "  /!\\ {:>3d}x{:<3d} | {:>4d}x{:<4d} ({:>4s}x{:>4s}) >> {:>3d}x{:<3d} != background         ",
                         x, y, fs, ft, fmt::format("{:X}.{:X}", s, fs & 0xF), fmt::format("{:X}.{:X}", t, ft & 0xF), s,
@@ -220,6 +230,7 @@ void test(const std::filesystem::path &path) {
                     fmt::print("   {} / {}\n", xInterp.Num(), xInterp.Den());
                     hadMismatch = true;
                 } else if (texCoord.s != s || texCoord.t != t) {
+                    // Mismatched pixel.
                     fmt::print("  /!\\ {:>3d}x{:<3d} | {:>4d}x{:<4d} ({:>4s}x{:>4s}) >> {:>3d}x{:<3d} != {:>3d}x{:<3d} "
                                "{:<11s}",
                                x, y, fs, ft, fmt::format("{:X}.{:X}", s, fs & 0xF),
@@ -240,26 +251,29 @@ void test(const std::filesystem::path &path) {
                     fmt::print(" [{:2d},{:2d},{:2d}]", frameClr.r, frameClr.g, frameClr.b);
                     fmt::print("   {} / {}\n", xInterp.Num(), xInterp.Den());
                     hadMismatch = true;
-                } else if constexpr (showMatches) {
-                    fmt::print("      {:>3d}x{:<3d} | {:>4d}x{:<4d} ({:>4s}x{:>4s}) >> {:>3d}x{:<3d} == {:>3d}x{:<3d}  "
-                               "          ",
-                               x, y, fs, ft, fmt::format("{:X}.{:X}", s, fs & 0xF),
-                               fmt::format("{:X}.{:X}", t, ft & 0xF), s, t, texCoord.s, texCoord.t, s - texCoord.s,
-                               t - texCoord.t);
-                    fmt::print("   [{:2d},{:2d},{:2d}] ", clr.r, clr.g, clr.b);
-                    if constexpr (printColors) {
-                        ansicon::Attributes attrs;
-                        attrs.SetBGColor24(cvt5to8(clr.r), cvt5to8(clr.g), cvt5to8(clr.b));
-                        fmt::print("  ");
+                } else {
+                    matchCount++;
+                    if constexpr (showMatches) {
+                        fmt::print(
+                            "      {:>3d}x{:<3d} | {:>4d}x{:<4d} ({:>4s}x{:>4s}) >> {:>3d}x{:<3d} == {:>3d}x{:<3d}  "
+                            "          ",
+                            x, y, fs, ft, fmt::format("{:X}.{:X}", s, fs & 0xF), fmt::format("{:X}.{:X}", t, ft & 0xF),
+                            s, t, texCoord.s, texCoord.t, s - texCoord.s, t - texCoord.t);
+                        fmt::print("   [{:2d},{:2d},{:2d}] ", clr.r, clr.g, clr.b);
+                        if constexpr (printColors) {
+                            ansicon::Attributes attrs;
+                            attrs.SetBGColor24(cvt5to8(clr.r), cvt5to8(clr.g), cvt5to8(clr.b));
+                            fmt::print("  ");
+                        }
+                        fmt::print(" == ");
+                        if constexpr (printColors) {
+                            ansicon::Attributes attrs;
+                            attrs.SetBGColor24(cvt5to8(frameClr.r), cvt5to8(frameClr.g), cvt5to8(frameClr.b));
+                            fmt::print("  ");
+                        }
+                        fmt::print(" [{:2d},{:2d},{:2d}]", frameClr.r, frameClr.g, frameClr.b);
+                        fmt::print("   {} / {}\n", xInterp.Num(), xInterp.Den());
                     }
-                    fmt::print(" == ");
-                    if constexpr (printColors) {
-                        ansicon::Attributes attrs;
-                        attrs.SetBGColor24(cvt5to8(frameClr.r), cvt5to8(frameClr.g), cvt5to8(frameClr.b));
-                        fmt::print("  ");
-                    }
-                    fmt::print(" [{:2d},{:2d},{:2d}]", frameClr.r, frameClr.g, frameClr.b);
-                    fmt::print("   {} / {}\n", xInterp.Num(), xInterp.Den());
                 }
             };
         };
@@ -314,8 +328,161 @@ void test(const std::filesystem::path &path) {
 
             fmt::print("    X interpolator: {:>3d}..{:<3d} ({})   interior {}\n", xInterp.X0(), xInterp.X1(),
                        xInterp.XMax(), (drawInterior ? "drawn" : "hidden"));
+
+            if (hadMismatch) {
+                // Find properly matching parameters
+                // TODO: optimize; this is a dumb brute-force algorithm
+                // - could use the existing values as a starting point since they are very close to the correct values
+                // - nudge up or down depending on whether the interpolation undershoots or overshoots the captured data
+                // - only problem is when both left and right edge attributes are not constant
+                //   - which of the sides to nudge?
+                //     - maybe check the delta gradient
+                //       - split dataset in exactly half (add middle entry to both if odd), compare halves
+                //     - if overshooting and gradient increases (more +) towards right edge, decrement right edge
+                //     - if overshooting and gradient decreases (more +) towards right edge, decrement left edge
+                //     - if undershooting and gradient increases (more -) towards right edge, increment right edge
+                //     - if undershooting and gradient decreases (more -) towards right edge, increment left edge
+
+                // Get attribute range limits
+                const int32_t slLo = kTexCoords[cvlIndex][0];
+                const int32_t slHi = kTexCoords[nvlIndex][0];
+
+                const int32_t srLo = kTexCoords[cvrIndex][0];
+                const int32_t srHi = kTexCoords[nvrIndex][0];
+
+                const int32_t tlLo = kTexCoords[cvlIndex][1];
+                const int32_t tlHi = kTexCoords[nvlIndex][1];
+
+                const int32_t trLo = kTexCoords[cvrIndex][1];
+                const int32_t trHi = kTexCoords[nvrIndex][1];
+
+                const int32_t start = xls;
+                const int32_t end = xre + (rightDX != 0);
+
+                auto testAttr = [&](int32_t l, int32_t r, bool s) {
+                    Interpolator xInterp;
+                    xInterp.Setup(start, end, 1, 1);
+                    auto test = [&](int32_t xs, int32_t xe) {
+                        for (int32_t x = xs; x <= xe; x++) {
+                            // Update X interpolation factors
+                            xInterp.ComputeFactors(x);
+
+                            // Interpolate texture coordinate along X axis
+                            const int16_t frac = std::clamp(xInterp.InterpolateAttribute(l, r), 0, 2047);
+
+                            // Remove fractional part
+                            const int16_t integ = frac >> 4;
+
+                            // Compare against captured data
+                            const Color15 frameClr = {.u16 = data.frame[y][x]};
+                            const auto texCoord = ToTexCoord(frameClr);
+                            const int32_t targetCoord = (s ? texCoord.s : texCoord.t);
+                            if (frameClr.r == 3 && frameClr.g == 3 && frameClr.b == 3) {
+                                // Ignore background pixels; not a problem with attribute interpolation
+                            } else if (targetCoord != integ) {
+                                // Found a mismatch
+                                return false;
+                            }
+                        }
+                        return true;
+                    };
+
+                    // Test left edge
+                    if (drawLeftEdge) {
+                        const int32_t xStart = std::max(xls, 0);
+                        const int32_t xEnd = std::min(xle, (int32_t)255);
+                        if (!test(xStart, xEnd)) {
+                            return false;
+                        }
+                    }
+
+                    // Test polygon interior
+                    if (drawInterior) {
+                        const int32_t xStart = std::max(xle + 1, 0);
+                        const int32_t xEnd = std::min(xrs, (int32_t)256);
+                        if (!test(xStart, xEnd - 1)) {
+                            return false;
+                        }
+                    }
+
+                    // Test right edge
+                    if (drawRightEdge) {
+                        const int32_t xStart = std::max(xrs, 0);
+                        const int32_t xEnd = std::min(xre, (int32_t)255);
+                        if (!test(xStart, xEnd)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                };
+
+                int32_t slMin = -1;
+                int32_t slMax = -1;
+                int32_t srMin = -1;
+                int32_t srMax = -1;
+
+                int32_t tlMin = -1;
+                int32_t tlMax = -1;
+                int32_t trMin = -1;
+                int32_t trMax = -1;
+
+                bool foundMin = false;
+                for (int32_t slTest = slLo; slTest <= slHi; slTest++) {
+                    for (int32_t srTest = srLo; srTest <= srHi; srTest++) {
+                        if (testAttr(slTest, srTest, true)) {
+                            // Found a match for S
+                            if (foundMin) {
+                                slMax = slTest;
+                                srMax = srTest;
+                            } else {
+                                slMin = slMax = slTest;
+                                srMin = srMax = srTest;
+                                foundMin = true;
+                            }
+                        } else if (foundMin) {
+                            break;
+                        }
+                    }
+                }
+
+                foundMin = false;
+                for (int32_t tlTest = tlLo; tlTest <= tlHi; tlTest++) {
+                    for (int32_t trTest = trLo; trTest <= trHi; trTest++) {
+                        if (testAttr(tlTest, trTest, false)) {
+                            // Found a match for T
+                            if (foundMin) {
+                                tlMax = tlTest;
+                                trMax = trTest;
+                            } else {
+                                tlMin = tlMax = tlTest;
+                                trMin = trMax = trTest;
+                                foundMin = true;
+                            }
+                        } else if (foundMin) {
+                            break;
+                        }
+                    }
+                }
+
+                auto fmtRes = [](int32_t valMin, int32_t valMax) -> std::string {
+                    if (valMin == -1) {
+                        return "??";
+                    } else if (valMin == valMax) {
+                        return fmt::format("{:d}", valMin);
+                    } else {
+                        return fmt::format("{:d}..{:d}", valMin, valMax);
+                    }
+                };
+
+                fmt::print("       Corrected left texcoords:  {:>10s}x{:<10s}\n", fmtRes(slMin, slMax),
+                           fmtRes(tlMin, tlMax));
+                fmt::print("       Corrected right texcoords: {:>10s}x{:<10s}\n", fmtRes(srMin, srMax),
+                           fmtRes(trMin, trMax));
+            }
         }
     }
+
+    fmt::print("Accuracy: {} / {} ({:3.2f}%)\n", matchCount, totalCount, (double)matchCount / totalCount * 100.0);
 }
 
 bool read(const std::filesystem::path &path) {
