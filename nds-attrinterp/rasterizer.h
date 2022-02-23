@@ -14,18 +14,18 @@ struct PolygonState {
 
         Slope slope;
 
-        void Setup(const Polygon &polygon, bool right) {
+        void Setup(const Polygon &polygon, bool left) {
             // Initialize vertex pointers
             nextVertex = polygon.topVtxIndex;
             vertexCount = polygon.vertexCount;
-            nextPositive = (right == polygon.windingCW);
+            nextPositive = (left != polygon.windingCW);
             AdvanceVertex();
 
             // Initialize slope
-            CalcSlope(polygon, polygon.topScreenY);
+            CalcSlope(polygon, polygon.topScreenY, left);
         }
 
-        void CalcSlope(const Polygon &polygon, const int32_t y) {
+        void CalcSlope(const Polygon &polygon, const int32_t y, bool left) {
             // Find first vertex at or below the current Y screen coordinate; stop if it's the last vertex
             while (currVertex != polygon.btmVtxIndex && y >= polygon.verts[nextVertex][1]) {
                 AdvanceVertex();
@@ -33,7 +33,7 @@ struct PolygonState {
 
             const auto &cv = polygon.verts[currVertex];
             const auto &nv = polygon.verts[nextVertex];
-            slope.Setup(cv[0], cv[1], nv[0], nv[1], 1, 1);
+            slope.Setup(cv[0], cv[1], nv[0], nv[1], 1, 1, left);
         }
 
         static size_t IncrementIndex(size_t index, size_t count) {
@@ -56,10 +56,10 @@ struct PolygonState {
 
     void CalcSlopes(const int32_t y) {
         if (leftEdge.currVertex != polygon->btmVtxIndex && y >= polygon->verts[leftEdge.nextVertex][1]) {
-            leftEdge.CalcSlope(*polygon, y);
+            leftEdge.CalcSlope(*polygon, y, true);
         }
         if (rightEdge.currVertex != polygon->btmVtxIndex && y >= polygon->verts[rightEdge.nextVertex][1]) {
-            rightEdge.CalcSlope(*polygon, y);
+            rightEdge.CalcSlope(*polygon, y, false);
         }
     }
 
@@ -67,8 +67,8 @@ struct PolygonState {
         this->polygon = &polygon;
         tall = (polygon.topScreenY != polygon.btmScreenY);
 
-        leftEdge.Setup(polygon, false);
-        rightEdge.Setup(polygon, true);
+        leftEdge.Setup(polygon, true);
+        rightEdge.Setup(polygon, false);
     }
 
     Edge leftEdge;

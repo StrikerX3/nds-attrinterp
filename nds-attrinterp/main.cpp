@@ -7,9 +7,10 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 constexpr bool printColors = true;
-constexpr bool showMatches = true;
+constexpr bool showMatches = false;
 
 union Color15 {
     uint16_t u16;
@@ -56,6 +57,21 @@ struct EdgeParams {
     int32_t exactS = -1, exactT = -1;
 };
 
+struct AttrParams {
+    int32_t sMin, sMax;
+    int32_t tMin, tMax;
+};
+
+struct SlopeParams {
+    bool leftEdge;
+    int32_t x0, y0;
+    int32_t x1, y1;
+    int32_t s0, t0;
+    int32_t s1, t1;
+    int32_t attrFirstY = -1;
+    std::vector<AttrParams> attrParams;
+};
+
 void test(const std::filesystem::path &path) {
     TestData data;
     if (!data.Read(path)) {
@@ -77,6 +93,9 @@ void test(const std::filesystem::path &path) {
     // Collect edge parameters per scanline
     std::array<EdgeParams, 192> leftEdgeParams{};
     std::array<EdgeParams, 192> rightEdgeParams{};
+
+    // Texture coordinates for the 128x128 texture
+    static constexpr int32_t kTexCoords[4][2] = {{0, 0}, {0, 2048}, {2048, 2048}, {2048, 0}};
 
     PolygonState state;
     state.SetupPolygon(polygon);
@@ -144,27 +163,9 @@ void test(const std::filesystem::path &path) {
             }
         }
 
-        // Store edge parameters
-        leftEdgeParams[y].cvIndex = cvlIndex;
-        leftEdgeParams[y].nvIndex = nvlIndex;
-        leftEdgeParams[y].x0 = polygon.verts[cvlIndex][0];
-        leftEdgeParams[y].y0 = polygon.verts[cvlIndex][1];
-        leftEdgeParams[y].x1 = polygon.verts[nvlIndex][0];
-        leftEdgeParams[y].y1 = polygon.verts[nvlIndex][1];
-
-        rightEdgeParams[y].cvIndex = cvrIndex;
-        rightEdgeParams[y].nvIndex = nvrIndex;
-        rightEdgeParams[y].x0 = polygon.verts[cvrIndex][0];
-        rightEdgeParams[y].y0 = polygon.verts[cvrIndex][1];
-        rightEdgeParams[y].x1 = polygon.verts[nvrIndex][0];
-        rightEdgeParams[y].y1 = polygon.verts[nvrIndex][1];
-
         // Update interpolators
-        leftEdge.slope.ComputeFactors(y, false);
-        rightEdge.slope.ComputeFactors(y, true);
-
-        // Texture coordinates for the 128x128 texture
-        static constexpr int32_t kTexCoords[4][2] = {{0, 0}, {0, 2048}, {2048, 2048}, {2048, 0}};
+        leftEdge.slope.ComputeFactors(y);
+        rightEdge.slope.ComputeFactors(y);
 
         // Interpolate texture coordinates for the left edge
         const int32_t sl = leftSlope->InterpolateAttribute(kTexCoords[cvlIndex][0], kTexCoords[nvlIndex][0]);
@@ -309,10 +310,13 @@ void test(const std::filesystem::path &path) {
             };
         };
 
+        bool anyPixelDrawn = false;
+
         // Test left edge
         if (drawLeftEdge) {
             const int32_t xStart = std::max(xls, 0);
             const int32_t xEnd = std::min(xle, (int32_t)255);
+            anyPixelDrawn = (xStart <= xEnd);
             testSpan(xStart, xEnd);
         }
 
@@ -320,6 +324,7 @@ void test(const std::filesystem::path &path) {
         if (drawInterior) {
             const int32_t xStart = std::max(xle + 1, 0);
             const int32_t xEnd = std::min(xrs, (int32_t)256);
+            anyPixelDrawn |= (xStart < xEnd);
             testSpan(xStart, xEnd - 1);
         }
 
@@ -327,6 +332,7 @@ void test(const std::filesystem::path &path) {
         if (drawRightEdge) {
             const int32_t xStart = std::max(xrs, 0);
             const int32_t xEnd = std::min(xre, (int32_t)255);
+            anyPixelDrawn |= (xStart <= xEnd);
             testSpan(xStart, xEnd);
         }
 
@@ -359,156 +365,175 @@ void test(const std::filesystem::path &path) {
 
             fmt::print("    X interpolator: {:>3d}..{:<3d} ({})   interior {}\n", xInterp.X0(), xInterp.X1(),
                        xInterp.XMax(), (drawInterior ? "drawn" : "hidden"));
+        }
 
-            // Find properly matching parameters regardless of whether we found a match or not
+        // Find properly matching parameters regardless of whether we found a match or not
 
-            // TODO: optimize; this is a dumb brute-force algorithm
-            // - could use the existing values as a starting point since they are very close to the correct values
-            // - nudge up or down depending on whether the interpolation undershoots or overshoots the captured data
-            // - only problem is when both left and right edge attributes are not constant
-            //   - which of the sides to nudge?
-            //     - maybe check the delta gradient
-            //       - split dataset in exactly half (add middle entry to both if odd), compare halves
-            //     - if overshooting and gradient increases (more +) towards right edge, decrement right edge
-            //     - if overshooting and gradient decreases (more +) towards right edge, decrement left edge
-            //     - if undershooting and gradient increases (more -) towards right edge, increment right edge
-            //     - if undershooting and gradient decreases (more -) towards right edge, increment left edge
+        // TODO: optimize; this is a dumb brute-force algorithm
+        // - could use the existing values as a starting point since they are very close to the correct values
+        // - nudge up or down depending on whether the interpolation undershoots or overshoots the captured data
+        // - only problem is when both left and right edge attributes are not constant
+        //   - which of the sides to nudge?
+        //     - maybe check the delta gradient
+        //       - split dataset in exactly half (add middle entry to both if odd), compare halves
+        //     - if overshooting and gradient increases (more +) towards right edge, decrement right edge
+        //     - if overshooting and gradient decreases (more +) towards right edge, decrement left edge
+        //     - if undershooting and gradient increases (more -) towards right edge, increment right edge
+        //     - if undershooting and gradient decreases (more -) towards right edge, increment left edge
 
-            // Get attribute range limits
-            const int32_t slLo = kTexCoords[cvlIndex][0];
-            const int32_t slHi = kTexCoords[nvlIndex][0];
+        // Get attribute range limits
+        const int32_t slLo = kTexCoords[cvlIndex][0];
+        const int32_t slHi = kTexCoords[nvlIndex][0];
 
-            const int32_t srLo = kTexCoords[cvrIndex][0];
-            const int32_t srHi = kTexCoords[nvrIndex][0];
+        const int32_t srLo = kTexCoords[cvrIndex][0];
+        const int32_t srHi = kTexCoords[nvrIndex][0];
 
-            const int32_t tlLo = kTexCoords[cvlIndex][1];
-            const int32_t tlHi = kTexCoords[nvlIndex][1];
+        const int32_t tlLo = kTexCoords[cvlIndex][1];
+        const int32_t tlHi = kTexCoords[nvlIndex][1];
 
-            const int32_t trLo = kTexCoords[cvrIndex][1];
-            const int32_t trHi = kTexCoords[nvrIndex][1];
+        const int32_t trLo = kTexCoords[cvrIndex][1];
+        const int32_t trHi = kTexCoords[nvrIndex][1];
 
-            const int32_t start = xls;
-            const int32_t end = xre + (rightDX != 0);
+        const int32_t start = xls;
+        const int32_t end = xre + (rightDX != 0);
 
-            auto testAttr = [&](int32_t l, int32_t r, bool s) {
-                Interpolator xInterp;
-                xInterp.Setup(start, end, 1, 1);
-                auto test = [&](int32_t xs, int32_t xe) {
-                    for (int32_t x = xs; x <= xe; x++) {
-                        // Update X interpolation factors
-                        xInterp.ComputeFactors(x);
+        auto testAttr = [&](int32_t l, int32_t r, bool s) {
+            Interpolator xInterp;
+            xInterp.Setup(start, end, 1, 1);
+            auto test = [&](int32_t xs, int32_t xe) {
+                for (int32_t x = xs; x <= xe; x++) {
+                    // Update X interpolation factors
+                    xInterp.ComputeFactors(x);
 
-                        // Interpolate texture coordinate along X axis
-                        const int16_t frac = std::clamp(xInterp.InterpolateAttribute(l, r), 0, 2047);
+                    // Interpolate texture coordinate along X axis
+                    const int16_t frac = std::clamp(xInterp.InterpolateAttribute(l, r), 0, 2047);
 
-                        // Remove fractional part
-                        const int16_t integ = frac >> 4;
+                    // Remove fractional part
+                    const int16_t integ = frac >> 4;
 
-                        // Compare against captured data
-                        const Color15 frameClr = {.u16 = data.frame[y][x]};
-                        const auto texCoord = ToTexCoord(frameClr);
-                        const int32_t targetCoord = (s ? texCoord.s : texCoord.t);
-                        if (frameClr.r == 3 && frameClr.g == 3 && frameClr.b == 3) {
-                            // Ignore background pixels; not a problem with attribute interpolation
-                        } else if (targetCoord != integ) {
-                            // Found a mismatch
-                            return false;
-                        }
-                    }
-                    return true;
-                };
-
-                // Test left edge
-                if (drawLeftEdge) {
-                    const int32_t xStart = std::max(xls, 0);
-                    const int32_t xEnd = std::min(xle, (int32_t)255);
-                    if (!test(xStart, xEnd)) {
-                        return false;
-                    }
-                }
-
-                // Test polygon interior
-                if (drawInterior) {
-                    const int32_t xStart = std::max(xle + 1, 0);
-                    const int32_t xEnd = std::min(xrs, (int32_t)256);
-                    if (!test(xStart, xEnd - 1)) {
-                        return false;
-                    }
-                }
-
-                // Test right edge
-                if (drawRightEdge) {
-                    const int32_t xStart = std::max(xrs, 0);
-                    const int32_t xEnd = std::min(xre, (int32_t)255);
-                    if (!test(xStart, xEnd)) {
+                    // Compare against captured data
+                    const Color15 frameClr = {.u16 = data.frame[y][x]};
+                    const auto texCoord = ToTexCoord(frameClr);
+                    const int32_t targetCoord = (s ? texCoord.s : texCoord.t);
+                    if (frameClr.r == 3 && frameClr.g == 3 && frameClr.b == 3) {
+                        // Ignore background pixels; not a problem with attribute interpolation
+                    } else if (targetCoord != integ) {
+                        // Found a mismatch
                         return false;
                     }
                 }
                 return true;
             };
 
-            int32_t slMin = -1;
-            int32_t slMax = -1;
-            int32_t srMin = -1;
-            int32_t srMax = -1;
-
-            int32_t tlMin = -1;
-            int32_t tlMax = -1;
-            int32_t trMin = -1;
-            int32_t trMax = -1;
-
-            bool foundMin = false;
-            for (int32_t slTest = slLo; slTest <= slHi; slTest++) {
-                for (int32_t srTest = srLo; srTest <= srHi; srTest++) {
-                    if (testAttr(slTest, srTest, true)) {
-                        // Found a match for S
-                        if (foundMin) {
-                            slMax = slTest;
-                            srMax = srTest;
-                        } else {
-                            slMin = slMax = slTest;
-                            srMin = srMax = srTest;
-                            foundMin = true;
-                        }
-                    } else if (foundMin) {
-                        break;
-                    }
+            // Test left edge
+            if (drawLeftEdge) {
+                const int32_t xStart = std::max(xls, 0);
+                const int32_t xEnd = std::min(xle, (int32_t)255);
+                if (!test(xStart, xEnd)) {
+                    return false;
                 }
             }
 
-            foundMin = false;
-            for (int32_t tlTest = tlLo; tlTest <= tlHi; tlTest++) {
-                for (int32_t trTest = trLo; trTest <= trHi; trTest++) {
-                    if (testAttr(tlTest, trTest, false)) {
-                        // Found a match for T
-                        if (foundMin) {
-                            tlMax = tlTest;
-                            trMax = trTest;
-                        } else {
-                            tlMin = tlMax = tlTest;
-                            trMin = trMax = trTest;
-                            foundMin = true;
-                        }
-                    } else if (foundMin) {
-                        break;
-                    }
+            // Test polygon interior
+            if (drawInterior) {
+                const int32_t xStart = std::max(xle + 1, 0);
+                const int32_t xEnd = std::min(xrs, (int32_t)256);
+                if (!test(xStart, xEnd - 1)) {
+                    return false;
                 }
             }
 
-            auto fmtRes = [](int32_t valMin, int32_t valMax) -> std::string {
-                if (valMin == -1) {
-                    return "??";
-                } else if (valMin == valMax) {
-                    return fmt::format("{:d}", valMin);
-                } else {
-                    return fmt::format("{:d}..{:d}", valMin, valMax);
+            // Test right edge
+            if (drawRightEdge) {
+                const int32_t xStart = std::max(xrs, 0);
+                const int32_t xEnd = std::min(xre, (int32_t)255);
+                if (!test(xStart, xEnd)) {
+                    return false;
                 }
-            };
+            }
+            return true;
+        };
 
+        int32_t slMin = -1;
+        int32_t slMax = -1;
+        int32_t srMin = -1;
+        int32_t srMax = -1;
+
+        int32_t tlMin = -1;
+        int32_t tlMax = -1;
+        int32_t trMin = -1;
+        int32_t trMax = -1;
+
+        bool foundMin = false;
+        for (int32_t slTest = slLo; slTest <= slHi; slTest++) {
+            for (int32_t srTest = srLo; srTest <= srHi; srTest++) {
+                if (testAttr(slTest, srTest, true)) {
+                    // Found a match for S
+                    if (foundMin) {
+                        slMax = slTest;
+                        srMax = srTest;
+                    } else {
+                        slMin = slMax = slTest;
+                        srMin = srMax = srTest;
+                        foundMin = true;
+                    }
+                } else if (foundMin) {
+                    break;
+                }
+            }
+        }
+
+        foundMin = false;
+        for (int32_t tlTest = tlLo; tlTest <= tlHi; tlTest++) {
+            for (int32_t trTest = trLo; trTest <= trHi; trTest++) {
+                if (testAttr(tlTest, trTest, false)) {
+                    // Found a match for T
+                    if (foundMin) {
+                        tlMax = tlTest;
+                        trMax = trTest;
+                    } else {
+                        tlMin = tlMax = tlTest;
+                        trMin = trMax = trTest;
+                        foundMin = true;
+                    }
+                } else if (foundMin) {
+                    break;
+                }
+            }
+        }
+
+        auto fmtRes = [](int32_t valMin, int32_t valMax) -> std::string {
+            if (valMin == -1) {
+                return "??";
+            } else if (valMin == valMax) {
+                return fmt::format("{:d}", valMin);
+            } else {
+                return fmt::format("{:d}..{:d}", valMin, valMax);
+            }
+        };
+
+        if (hadMismatch) {
             fmt::print("       Corrected left texcoords:  {:>10s}x{:<10s}\n", fmtRes(slMin, slMax),
                        fmtRes(tlMin, tlMax));
             fmt::print("       Corrected right texcoords: {:>10s}x{:<10s}\n", fmtRes(srMin, srMax),
                        fmtRes(trMin, trMax));
+        }
+
+        // Store edge parameters, but only if at least one pixel was drawn on this scanline
+        if (anyPixelDrawn) {
+            leftEdgeParams[y].cvIndex = cvlIndex;
+            leftEdgeParams[y].nvIndex = nvlIndex;
+            leftEdgeParams[y].x0 = polygon.verts[cvlIndex][0];
+            leftEdgeParams[y].y0 = polygon.verts[cvlIndex][1];
+            leftEdgeParams[y].x1 = polygon.verts[nvlIndex][0];
+            leftEdgeParams[y].y1 = polygon.verts[nvlIndex][1];
+
+            rightEdgeParams[y].cvIndex = cvrIndex;
+            rightEdgeParams[y].nvIndex = nvrIndex;
+            rightEdgeParams[y].x0 = polygon.verts[cvrIndex][0];
+            rightEdgeParams[y].y0 = polygon.verts[cvrIndex][1];
+            rightEdgeParams[y].x1 = polygon.verts[nvrIndex][0];
+            rightEdgeParams[y].y1 = polygon.verts[nvrIndex][1];
 
             leftEdgeParams[y].sMin = slMin;
             leftEdgeParams[y].sMax = slMax;
@@ -532,12 +557,85 @@ void test(const std::filesystem::path &path) {
 
     fmt::print("Accuracy: {} / {} ({:3.2f}%)\n", matchCount, totalCount, (double)matchCount / totalCount * 100.0);
 
-    // TODO: use leftEdgeParams and rightEdgeParams to figure out the correct slope interpolation parameters
-    //    m_interp.Setup(x0, x1, w0, w1);
-    //      - when should x0 be incremented or decremented?
-    //      - when should x1 be incremented or decremented?
-    //    m_interp.ComputeFactors(x);
-    //      - what x? XStart(y)? XEnd(y)? fractional? y+1? y-1? XStart(y+1) instead of XEnd(y)? any other rules?
+    if (matchCount != totalCount) {
+        // Aggregate into slopes
+        std::vector<SlopeParams> slopes;
+        auto processEdges = [&](bool left, std::array<EdgeParams, 192> &edgeParams) {
+            for (size_t y = ys; y <= ye; y++) {
+                const auto &row = edgeParams[y];
+                if (row.x0 != -1) {
+                    auto newEdge = [&]() -> SlopeParams & {
+                        auto &edge = slopes.emplace_back();
+                        edge.x0 = row.x0;
+                        edge.y0 = row.y0;
+                        edge.x1 = row.x1;
+                        edge.y1 = row.y1;
+                        edge.s0 = kTexCoords[row.cvIndex][0];
+                        edge.t0 = kTexCoords[row.cvIndex][1];
+                        edge.s1 = kTexCoords[row.nvIndex][0];
+                        edge.t1 = kTexCoords[row.nvIndex][1];
+                        edge.leftEdge = left;
+                        return edge;
+                    };
+                    auto matchingEdge = [&]() -> SlopeParams & {
+                        if (slopes.empty()) {
+                            return newEdge();
+                        } else {
+                            auto &edge = slopes.back();
+                            if (edge.x0 != row.x0 || edge.y0 != row.y0 || edge.x1 != row.x1 || edge.y1 != row.y1) {
+                                return newEdge();
+                            } else {
+                                return edge;
+                            }
+                        }
+                    };
+                    auto &edge = matchingEdge();
+                    if (edge.attrFirstY == -1) {
+                        edge.attrFirstY = y;
+                    }
+                    edge.attrParams.emplace_back(
+                        AttrParams{.sMin = row.sMin, .sMax = row.sMax, .tMin = row.tMin, .tMax = row.tMax});
+                }
+            }
+        };
+        processEdges(true, leftEdgeParams);
+        processEdges(false, rightEdgeParams);
+
+        fmt::print("Slopes:\n");
+        for (auto &slope : slopes) {
+            const char side = (slope.leftEdge ? 'L' : 'R');
+            const bool negative = (slope.x0 > slope.x1);
+            const bool xmajor = (std::abs(slope.x1 - slope.x0) > std::abs(slope.y1 - slope.y0));
+            Interpolator interp;
+            interp.Setup(slope.y0, slope.y1, 1, 1);
+
+            auto fmtRange = [](int32_t min, int32_t max) {
+                if (min == max) {
+                    return fmt::format("{}", min);
+                } else {
+                    return fmt::format("{}..{}", min, max);
+                }
+            };
+            fmt::print("  {}{}{} {:>3d}x{:<3d}..{:>3d}x{:<3d}  dx={:<4d}  dy={:4d}\n", side, (negative ? '-' : '+'),
+                       (xmajor ? 'X' : 'Y'), slope.x0, slope.y0, slope.x1, slope.y1, slope.x1 - slope.x0,
+                       slope.y1 - slope.y0);
+            fmt::print("    ranges   s={:<10s}  t={:<10s}\n", fmtRange(slope.s0, slope.s1),
+                       fmtRange(slope.t0, slope.t1));
+            for (int32_t i = 0; i < slope.attrParams.size(); i++) {
+                int32_t y = i + slope.attrFirstY;
+
+                const auto &attrs = slope.attrParams[i];
+                fmt::print("    y={:<3d} -> s={:<10s}  t={:<10s}", y, fmtRange(attrs.sMin, attrs.sMax),
+                           fmtRange(attrs.tMin, attrs.tMax));
+
+                // L-X and R+X seem to need +1
+                interp.ComputeFactors(y + (xmajor && slope.leftEdge == negative));
+                int32_t s = interp.InterpolateAttribute(slope.s0, slope.s1);
+                int32_t t = interp.InterpolateAttribute(slope.t0, slope.t1);
+                fmt::print("  interp s={:<4d}  t={:<4d}\n", s, t);
+            }
+        }
+    }
 }
 
 bool read(const std::filesystem::path &path) {

@@ -106,16 +106,18 @@ public:
     /// <param name="y1">Second Y coordinate</param>
     /// <param name="w0">W value at the first coordinate</param>
     /// <param name="w1">W value at the second coordinate</param>
-    void Setup(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t w0, int32_t w1) {
+    /// <param name="leftEdge">Whether this is the left or right edge</param>
+    void Setup(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t w0, int32_t w1, bool leftEdge) {
         // Always interpolate top to bottom
         if (y1 < y0) {
             std::swap(x0, x1);
             std::swap(y0, y1);
         }
 
-        // Store reference coordinates
+        // Store reference coordinates and edge side
         m_x0 = x0 << kFracBits;
         m_y0 = y0;
+        m_leftEdge = leftEdge;
 
         // Determine if this is a negative slope and adjust accordingly
         m_negative = (x1 < x0);
@@ -147,42 +149,15 @@ public:
         }
 
         // Configure attribute/depth interpolator
-        if (m_xMajor) {
-            if (m_negative) {
-                m_interp.Setup(x1, x0, w0, w1);
-                // m_interp.Setup(XEnd(y0), XStart(y1 - 1), w0, w1);
-                // m_interp.Setup(FracXEnd(y0), FracXEnd(y1), w0, w1);
-            } else {
-                m_interp.Setup(x0, x1, w0, w1);
-                // m_interp.Setup(XStart(y0), XEnd(y1 - 1), w0, w1);
-                // m_interp.Setup(FracXStart(y0), FracXStart(y1), w0, w1);
-            }
-        } else {
-            m_interp.Setup(y0, y1, w0, w1);
-        }
+        m_interp.Setup(y0, y1, w0, w1);
     }
 
     /// <summary>
     /// Update interpolation factors for the specified Y coordinate.
     /// </summary>
     /// <param name="y">The Y coordinate</param>
-    /// <param name="end">true to compute factors at the end of the span, false for the start of the span. Only used
-    /// with X-major slopes.</param>
-    void ComputeFactors(int32_t y, bool end) {
-        if (m_xMajor) {
-            // X coordinate to use depends on the end flag and m_negative:
-            //    neg  end  !=   coordinate
-            //    no   no   no   start
-            //    no   yes  yes  end
-            //    yes  no   yes  end
-            //    yes  yes  no   start
-            int32_t x = (!m_negative && end) ? XStart(y + 1) : (m_negative && !end) ? XEnd(y) : XStart(y);
-            // int32_t x = (m_negative != end) ? XEnd(y) : XStart(y);
-            // int32_t x = (m_negative != end) ? FracXEnd(y) : FracXStart(y);
-            m_interp.ComputeFactors(x);
-        } else {
-            m_interp.ComputeFactors(y);
-        }
+    void ComputeFactors(int32_t y) {
+        m_interp.ComputeFactors(y + (m_leftEdge == m_negative));
     }
 
     /// <summary>
@@ -284,6 +259,14 @@ public:
         return m_negative;
     }
 
+    /// <summary>
+    /// Determines if the slope is the left edge.
+    /// </summary>
+    /// <returns>True if the slope is the left edge</returns>
+    constexpr bool IsLeftEdge() const {
+        return m_leftEdge;
+    }
+
     const Interpolator &Interp() const {
         return m_interp;
     }
@@ -292,6 +275,7 @@ private:
     int32_t m_x0;    // X0 coordinate (minus 1 if this is a negative slope)
     int32_t m_y0;    // Y0 coordinate
     int32_t m_dx;    // X displacement per scanline
+    bool m_leftEdge; // True if this slope is on the left edge
     bool m_negative; // True if the slope is negative (X1 < X0)
     bool m_xMajor;   // True if the slope is X-major (X1-X0 > Y1-Y0)
 
