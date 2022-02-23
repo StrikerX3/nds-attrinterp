@@ -606,6 +606,7 @@ void test(const std::filesystem::path &path) {
             const char side = (slope.leftEdge ? 'L' : 'R');
             const bool negative = (slope.x0 > slope.x1);
             const bool xmajor = (std::abs(slope.x1 - slope.x0) > std::abs(slope.y1 - slope.y0));
+            const bool diagonal = (std::abs(slope.x1 - slope.x0) == std::abs(slope.y1 - slope.y0));
             Interpolator interp;
             interp.Setup(slope.y0, slope.y1, 1, 1);
 
@@ -628,8 +629,9 @@ void test(const std::filesystem::path &path) {
                 fmt::print("    y={:<3d} -> s={:<10s}  t={:<10s}", y, fmtRange(attrs.sMin, attrs.sMax),
                            fmtRange(attrs.tMin, attrs.tMax));
 
-                // L-X and R+X seem to need +1
-                interp.ComputeFactors(y + (xmajor && slope.leftEdge == negative));
+                // L-X and R+X need +1
+                // L-Y and R+Y need +1, but only perfect diagonals
+                interp.ComputeFactors(y + ((xmajor || diagonal) && (slope.leftEdge == negative)));
                 int32_t s = interp.InterpolateAttribute(slope.s0, slope.s1);
                 int32_t t = interp.InterpolateAttribute(slope.t0, slope.t1);
                 fmt::print("  interp s={:<4d}  t={:<4d}\n", s, t);

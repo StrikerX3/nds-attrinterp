@@ -126,13 +126,14 @@ public:
             std::swap(x0, x1);
         }
 
-        // Compute coordinate deltas and determine if the slope is X-major
+        // Compute coordinate deltas and determine if the slope is X-major or diagonal
         int32_t dx = (x1 - x0);
         int32_t dy = (y1 - y0);
         m_xMajor = (dx > dy);
+        m_diagonal = (dx == dy);
 
         // Precompute bias for X-major or diagonal slopes
-        if (m_xMajor || dx == dy) {
+        if (m_xMajor || m_diagonal) {
             if (m_negative) {
                 m_x0 -= kBias;
             } else {
@@ -157,7 +158,7 @@ public:
     /// </summary>
     /// <param name="y">The Y coordinate</param>
     void ComputeFactors(int32_t y) {
-        m_interp.ComputeFactors(y + (m_leftEdge == m_negative));
+        m_interp.ComputeFactors(y + ((m_xMajor || m_diagonal) && (m_leftEdge == m_negative)));
     }
 
     /// <summary>
@@ -278,6 +279,7 @@ private:
     bool m_leftEdge; // True if this slope is on the left edge
     bool m_negative; // True if the slope is negative (X1 < X0)
     bool m_xMajor;   // True if the slope is X-major (X1-X0 > Y1-Y0)
+    bool m_diagonal; // True if the slope is diagonal (X1-X0 = Y1-Y0)
 
     Interpolator m_interp; // Attribute interpolator
 };
