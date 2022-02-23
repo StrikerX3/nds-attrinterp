@@ -150,7 +150,8 @@ public:
         }
 
         // Configure attribute/depth interpolator
-        m_interp.Setup(y0, y1, w0, w1);
+        const int32_t interpAdjust = ((m_xMajor || m_diagonal) && (m_leftEdge == m_negative)) ? 1 : 0;
+        m_interp.Setup(y0 - interpAdjust, y1 - interpAdjust, w0, w1);
     }
 
     /// <summary>
@@ -158,7 +159,7 @@ public:
     /// </summary>
     /// <param name="y">The Y coordinate</param>
     void ComputeFactors(int32_t y) {
-        m_interp.ComputeFactors(y + ((m_xMajor || m_diagonal) && (m_leftEdge == m_negative)));
+        m_interp.ComputeFactors(y);
     }
 
     /// <summary>
