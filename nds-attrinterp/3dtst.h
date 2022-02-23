@@ -48,6 +48,14 @@ struct TestData {
             return false;
         }
 
+        // Ignore files with translucency unless wireframe is enabled
+        if (((params >> 2) & 1) == 0) {
+            uint8_t alpha = ((params >> 8) & 0x1F);
+            if (alpha > 0 && alpha < 31) {
+                return false;
+            }
+        }
+
         valid = true;
         frameLoaded = false;
         this->path = path;
