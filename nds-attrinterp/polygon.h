@@ -17,6 +17,8 @@ struct Polygon {
     int32_t topScreenY;
     int32_t btmScreenY;
 
+    int16_t w0, w1;
+
     uint8_t alpha;
 
     Polygon(const TestData &data) {

@@ -33,7 +33,7 @@ struct PolygonState {
 
             const auto &cv = polygon.verts[currVertex];
             const auto &nv = polygon.verts[nextVertex];
-            slope.Setup(cv[0], cv[1], nv[0], nv[1], 1, 1, left);
+            slope.Setup(cv[0], cv[1], nv[0], nv[1], polygon.w0, polygon.w1, left);
         }
 
         static size_t IncrementIndex(size_t index, size_t count) {

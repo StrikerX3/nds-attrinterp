@@ -10,8 +10,11 @@
 #include <vector>
 
 constexpr bool printColors = true;
-constexpr bool showMatches = false;
+constexpr bool showMatches = true;
 constexpr bool computeSlopes = false;
+
+constexpr int16_t kW0 = 4096;
+constexpr int16_t kW1 = 4096;
 
 union Color15 {
     uint16_t u16;
@@ -82,6 +85,8 @@ void test(const std::filesystem::path &path) {
     fmt::print("Testing {}...\n", path.string());
 
     Polygon polygon{data};
+    polygon.w0 = kW0;
+    polygon.w1 = kW1;
     for (size_t i = 0; i < polygon.vertexCount; i++) {
         fmt::print("  [{}] {}x{}\n", i, polygon.verts[i][0], polygon.verts[i][1]);
     }
@@ -178,7 +183,7 @@ void test(const std::filesystem::path &path) {
 
         // Setup X coordinate interpolator
         Interpolator xInterp;
-        xInterp.Setup(xls, xre + (rightSlope->DX() != 0), 1, 1);
+        xInterp.Setup(xls, xre + (rightSlope->DX() != 0), kW0, kW1);
 
         // Determine which portions of the polygon to render
         bool drawLeftEdge;
@@ -396,7 +401,7 @@ void test(const std::filesystem::path &path) {
 
             auto testAttr = [&](int32_t l, int32_t r, bool s) {
                 Interpolator xInterp;
-                xInterp.Setup(start, end, 1, 1);
+                xInterp.Setup(start, end, kW0, kW1);
                 auto test = [&](int32_t xs, int32_t xe) {
                     for (int32_t x = xs; x <= xe; x++) {
                         // Update X interpolation factors
@@ -606,7 +611,7 @@ void test(const std::filesystem::path &path) {
             const bool xmajor = (std::abs(slope.x1 - slope.x0) > std::abs(slope.y1 - slope.y0));
             const bool diagonal = (std::abs(slope.x1 - slope.x0) == std::abs(slope.y1 - slope.y0));
             Interpolator interp;
-            interp.Setup(slope.y0, slope.y1, 1, 1);
+            interp.Setup(slope.y0, slope.y1, kW0, kW1);
 
             auto fmtRange = [](int32_t min, int32_t max) {
                 if (min == max) {
